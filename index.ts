@@ -1,60 +1,73 @@
-import { ApolloLink, Operation, FetchResult, Observable, NextLink } from 'apollo-link';
-import { print } from "graphql/language/printer";
+import { ApolloLink, Observable } from 'apollo-link';
 import { OperationDefinitionNode } from 'graphql';
+import { print } from 'graphql/language/printer';
 
-export class ReduxLoggerLink extends ApolloLink {
-  public request(operation: Operation, next?: NextLink): Observable<FetchResult> | null {
-    const operationType = (operation.query.definitions[0] as OperationDefinitionNode).operation;
+export const loggerLink = new ApolloLink((operation, forward) =>
+  new Observable(observer => {
+    let handle: ZenObservable.Subscription;
+    Promise.resolve(operation)
+      .then(oper => {
+        const operationType = (oper.query.definitions[0] as OperationDefinitionNode).operation;
 
-    if (operationType === 'query') {
-      store.dispatch(actions.queryStarted({
-        name: operation.operationName,
-        query: print(operation.query),
-        variables: operation.variables
-      }));
-    } else if (operationType === 'mutation') {
-      store.dispatch(actions.mutationStarted({
-        name: operation.operationName,
-        mutation: print(operation.query),
-        variables: operation.variables
-      }));
-    }
-
-    if (next) {
-      const observer = next(operation);
-      
-      observer.subscribe({
-        error: e => {
-          if (operationType === 'query') {
-            store.dispatch(actions.queryError({
-              name: operation.operationName,
-              error: new Error(e)
-            }))
-          } else if (operationType === 'mutation') {
-            store.dispatch(actions.mutationError({
-              name: operation.operationName,
-              error: new Error(e)
-            }))
-          }
-        },
-        next: value => {
-          if (operationType === 'query') {
-            store.dispatch(actions.queryResultReceived({
-              name: operation.operationName,
-              response: value
-            }));
-          } else if (operationType === 'mutation') {
-            store.dispatch(actions.mutationResultReceived({
-              name: operation.operationName,
-              response: value
-            }));
-          }
+        if (operationType === 'query') {
+          store.dispatch(actions.queryStarted({
+            name: oper.operationName,
+            query: print(oper.query),
+            variables: oper.variables
+          }));
+        } else if (operationType === 'mutation') {
+          store.dispatch(actions.mutationStarted({
+            mutation: print(oper.query),
+            name: oper.operationName,
+            variables: oper.variables
+          }));
         }
-      });
 
-      return observer;
-    } else {
-      return null;
-    }
-  }
-}
+        return operationType
+      })
+      .then(operationType => {
+        if (forward) {
+          handle = forward(operation).subscribe({
+            complete: observer.complete.bind(observer),
+            error: err => {
+              if (operationType === 'query') {
+                  store.dispatch(actions.queryError({
+                    error: new Error(err),
+                    name: operation.operationName,
+                  }))
+                } else if (operationType === 'mutation') {
+                  store.dispatch(actions.mutationError({
+                    error: new Error(err),
+                    name: operation.operationName
+                  }))
+                }
+
+              return observer.error.bind(observer)(err);
+            },
+            next: value => {
+              if (operationType === 'query') {
+                store.dispatch(actions.queryResultReceived({
+                  name: operation.operationName,
+                  response: value
+                }));
+              } else if (operationType === 'mutation') {
+                store.dispatch(actions.mutationResultReceived({
+                  name: operation.operationName,
+                  response: value
+                }));
+              }
+
+              return observer.next.bind(observer)(value);
+            }
+          });
+        }
+      })
+      .catch(observer.error.bind(observer));
+
+    return () => {
+      if (handle) {
+        handle.unsubscribe();
+      }
+    };
+  })
+);
