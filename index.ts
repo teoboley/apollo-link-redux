@@ -1,6 +1,8 @@
 import { ApolloLink, Observable } from 'apollo-link';
 import { OperationDefinitionNode } from 'graphql';
 import { print } from 'graphql/language/printer';
+// import store from '../store';
+// import actions from '../store/rootActions';
 
 export const loggerLink = new ApolloLink((operation, forward) =>
   new Observable(observer => {
