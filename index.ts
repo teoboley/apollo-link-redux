@@ -1,3 +1,7 @@
+import { ApolloLink, Operation, FetchResult, Observable, NextLink } from 'apollo-link';
+import { print } from "graphql/language/printer";
+import { OperationDefinitionNode } from 'graphql';
+
 export class ReduxLoggerLink extends ApolloLink {
   public request(operation: Operation, next?: NextLink): Observable<FetchResult> | null {
     const operationType = (operation.query.definitions[0] as OperationDefinitionNode).operation;
